@@ -1,0 +1,91 @@
+---
+title: "Assignment1_Kwok"
+author: "James Kwok"
+date: "2024-01-08"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, eval = TRUE)
+```
+
+
+```{r library, echo=FALSE, message=FALSE}
+library(readr)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(corrplot)
+```
+```{r }
+
+
+# Set file path for the data
+INFILE <- '/Users/jck/Documents/MSDS 422/Unit 1/Assignment 1/HMEQ_Loss.csv'
+
+# Read in the data file
+df <- read_csv(INFILE, show_col_types = FALSE)
+
+# Define your target and predictor variables
+TARGET_L <- "TARGET_LOSS_AMT"
+cols_with_missing <- c('MORTDUE', 'VALUE', 'YOJ', 'DEROG', 'DELINQ', 'CLAGE', 'NINQ', 'CLNO', 'DEBTINC')
+categorical_cols_with_missing <- c('REASON','JOB')
+
+# Store initial missing values count
+initial_missing <- sapply(df[cols_with_missing], function(x) sum(is.na(x)))
+
+# Fill in missing values for TARGET_LOSS_AMT
+df[[TARGET_L]] <- ifelse(is.na(df[[TARGET_L]]), 0, df[[TARGET_L]])
+
+# Handle numeric columns with missing values
+for (col in cols_with_missing) {
+  # Identify and remove outliers using IQR method
+  Q1 <- quantile(df[[col]], 0.25, na.rm = TRUE)
+  Q3 <- quantile(df[[col]], 0.75, na.rm = TRUE)
+  IQR <- Q3 - Q1
+  lower_bound <- Q1 - 1.5 * IQR
+  upper_bound <- Q3 + 1.5 * IQR
+  temp_col <- df[[col]]
+  temp_col[temp_col < lower_bound | temp_col > upper_bound] <- NA
+  
+  # Impute missing values with median (from non-outlier data)
+  median_val <- median(temp_col, na.rm = TRUE)
+  df[[paste0('IMP_', col)]] <- ifelse(is.na(df[[col]]), median_val, df[[col]])
+}
+
+# Handle categorical columns with missing values
+for (col in categorical_cols_with_missing) {
+  # Fill missing values with 'Unknown'
+  df[[col]] <- ifelse(is.na(df[[col]]), 'Unknown', df[[col]])
+  
+  # One-hot encode using pivot_wider
+  df <- df %>% 
+    mutate("{col}" := as.character(.[[col]])) %>%
+    pivot_wider(
+      names_from = col,
+      values_from = col,
+      values_fill = list(col = 0),
+      names_prefix = paste0("OHE_", col, "_")
+    )
+}
+
+# Store final missing values count after imputation
+final_missing_imp <- sapply(df[grep("^IMP_", names(df))], function(x) sum(is.na(x)))
+
+# Display the initial and final missing values count
+missing_values_summary <- data.frame(
+  Initial = initial_missing,
+  Final_IMP = final_missing_imp
+)
+print(missing_values_summary)
+
+# Display the dataframe after imputation
+print(head(df, 5)) 
+# Heatmap for Correlation Matrix
+correlation_matrix <- cor(df %>% select(starts_with("IMP_"), TARGET_L), use="complete.obs")
+corrplot(correlation_matrix, method = "color")
+
+
+
+
+```
